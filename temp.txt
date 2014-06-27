@@ -1,0 +1,971 @@
+import wx
+import os #needed to join paths in open/save
+import threading
+import copy
+NULL
+class mainwindow(wx.Frame):
+def __init__(self NULL parent NULL title):
+self.input = ['' NULL '' NULL '' NULL '' NULL '' NULL ''] #Save user entered values
+self.dirname = ''
+self.filename = ''
+#Creating the window NULL setting it blue NULL and adding a text box to it
+wx.Frame.__init__(self NULL parent NULL title = title NULL size =(1000 NULL 800))
+self.SetBackgroundColour((120 NULL 180 NULL 255)) #light blue
+self.logger = wx.TextCtrl(self NULL size=(300 NULL 150) style=wx.TE_MULTILINE|\
+wx.TE_RICH)
+self.CreateStatusBar()
+self.Bind(wx.EVT_CLOSE NULL self.OnExit) #bind x button
+self.is_header = False
+self.copy_header = False
+self.is_csv = False
+self.want_csv = False
+self.smart_check = False
+NULL
+#Setting up the "File" menu option
+filemenu = wx.Menu()
+menuOpen = filemenu.Append(wx.ID_OPEN NULL "&Open" NULL \
+"Open a Text File of Points to Interpolate")
+menuSave = filemenu.Append(wx.ID_SAVE NULL \
+"&Save" NULL "Select a Text File for Output")
+menuAbout = filemenu.Append(wx.ID_ABOUT NULL "&About" NULL \
+"Information About the Program")
+filemenu.AppendSeparator()
+menuExit = filemenu.Append(wx.ID_EXIT "&Exit" "Terminate the Program")
+self.Bind(wx.EVT_MENU NULL self.OnOpen NULL menuOpen)
+self.Bind(wx.EVT_MENU NULL self.OnSave NULL menuSave)
+self.Bind(wx.EVT_MENU NULL self.OnAbout NULL menuAbout)
+self.Bind(wx.EVT_MENU NULL self.OnExit NULL menuExit)
+NULL
+#Setting up the "Help" menu option
+helpmenu = wx.Menu()
+self.menuHelp = helpmenu.Append(wx.ID_HELP NULL "&Help" NULL \
+"Help on Using the Program")
+self.Bind(wx.EVT_MENU NULL self.OnHelp NULL self.menuHelp)
+NULL
+NULL
+#Creating File MenuBar
+menubar = wx.MenuBar()
+menubar.Append(filemenu NULL "&File")
+menubar.Append(helpmenu NULL "&Help")
+self.SetMenuBar(menubar)
+NULL
+#Create Sizers
+mainSizer = wx.BoxSizer(wx.VERTICAL)
+grid = wx.GridBagSizer(hgap=7 NULL vgap=3)
+hSizer = wx.BoxSizer(wx.HORIZONTAL)
+NULL
+#Input File Box
+self.input_text = wx.StaticText(self NULL label = "Input File Name:")
+self.input_box = wx.TextCtrl(self NULL value="" NULL \
+size = (200 NULL -1))
+grid.Add(self.input_text NULL pos = (0 NULL 0))
+grid.Add(self.input_box NULL pos = (1 NULL 0))
+self.Bind(wx.EVT_TEXT NULL lambda x: self.EvtText(x NULL 0) NULL \
+self.input_box)
+self.make_bold(self.input_text)
+self.make_bold(self.input_box)
+NULL
+#Browse Button Points
+self.browse_button_input = wx.Button(self NULL label = "Browse..")
+self.Bind(wx.EVT_BUTTON NULL self.OnOpen NULL self.browse_button_input)
+self.make_bold(self.browse_button_input)
+grid.Add(self.browse_button_input NULL pos = (2 NULL 0))
+NULL
+#Output File Box
+self.output_text = wx.StaticText(self NULL label = "Output File Name:")
+self.output_box = wx.TextCtrl(self NULL value="" NULL \
+size = (200 NULL -1))
+grid.Add(self.output_text NULL pos = (0 NULL 1))
+grid.Add(self.output_box NULL pos = (1 NULL 1))
+self.Bind(wx.EVT_TEXT NULL lambda x: self.EvtText(x NULL 1) NULL \
+self.output_box)
+self.make_bold(self.output_text)
+self.make_bold(self.output_box)
+NULL
+#Browse Button Output
+self.browse_button_out = wx.Button(self NULL label = "Browse..")
+self.Bind(wx.EVT_BUTTON NULL self.OnSave NULL self.browse_button_out)
+self.make_bold(self.browse_button_out)
+grid.Add(self.browse_button_out NULL pos = (2 NULL 1))
+NULL
+#Number of Lines
+self.num_lines_prompt = wx.StaticText(\
+self label="Number of lines: ")
+self.num_lines = wx.TextCtrl(self NULL value="" NULL \
+size = (200 NULL -1))
+grid.Add(self.num_lines_prompt NULL pos = (3 NULL 0))
+grid.Add(self.num_lines NULL pos = (4 NULL 0))
+self.Bind(wx.EVT_TEXT NULL lambda x: self.EvtText(x NULL 4) NULL self.num_lines)
+self.make_bold(self.num_lines)
+self.make_bold(self.num_lines_prompt)
+NULL
+#Filter
+self.filter_prompt = wx.StaticText(\
+self label="Filter: ")
+self.filter = wx.TextCtrl(self NULL value="" NULL \
+size = (200 NULL -1))
+grid.Add(self.filter_prompt NULL pos = (3 NULL 1))
+grid.Add(self.filter NULL pos = (4 NULL 1))
+self.Bind(wx.EVT_TEXT NULL lambda x: self.EvtText(x NULL 5) NULL self.filter)
+self.make_bold(self.filter_prompt)
+self.make_bold(self.filter)
+NULL
+#Input format
+self.in_format_prompt = wx.StaticText(self label="Input File Format: ")
+self.in_format = wx.TextCtrl(self NULL value="" NULL \
+size = (200 NULL -1))
+grid.Add(self.in_format_prompt NULL pos = (5 NULL 0))
+grid.Add(self.in_format NULL pos = (6 NULL 0))
+self.Bind(wx.EVT_TEXT NULL lambda x: self.EvtText(x NULL 2) NULL self.in_format)
+self.make_bold(self.in_format_prompt)
+NULL
+#Output Format
+self.out_format_prompt= wx.StaticText(self label="Output File Format: ")
+self.out_format = wx.TextCtrl(self NULL value="" NULL \
+size = (200 NULL -1))
+grid.Add(self.out_format_prompt NULL pos = (5 NULL 1))
+grid.Add(self.out_format NULL pos = (6 NULL 1))
+self.Bind(wx.EVT_TEXT NULL lambda x: self.EvtText(x NULL 3) NULL self.out_format)
+self.make_bold(self.out_format_prompt)
+NULL
+#Create Checkbox
+self.header_check = wx.CheckBox(self NULL style=wx.CHK_2STATE NULL \
+name = "Has Header")
+grid.Add(self.header_check NULL pos = (7 NULL 1))
+self.Bind(wx.EVT_CHECKBOX NULL self.OnCheckHead NULL self.header_check)
+self.header_check_lbl = wx.StaticText(self NULL label =\
+(" "\
++ " Has Header"))
+grid.Add(self.header_check_lbl NULL pos=(7 NULL 0))
+self.make_bold(self.header_check_lbl)
+NULL
+#Create Checkbox
+self.header_copy = wx.CheckBox(self NULL style=wx.CHK_2STATE NULL \
+name = "Copy Header")
+grid.Add(self.header_copy NULL pos = (8 NULL 1))
+self.Bind(wx.EVT_CHECKBOX NULL self.OnCheckCopy NULL self.header_copy)
+self.header_copy_lbl = wx.StaticText(self NULL label =\
+(" " +\
+" Copy Header"))
+grid.Add(self.header_copy_lbl NULL pos=(8 NULL 0))
+self.make_bold(self.header_copy_lbl)
+self.header_copy.Enable(False)
+NULL
+#Create Checkbox
+self.in_is_csv = wx.CheckBox(self NULL style=wx.CHK_2STATE NULL \
+name = "Input File CSV")
+grid.Add(self.in_is_csv NULL pos = (9 NULL 1))
+self.Bind(wx.EVT_CHECKBOX NULL self.OnCheckCSV NULL self.in_is_csv)
+self.in_is_csv_lbl = wx.StaticText(self NULL label =\
+(" " +\
+" Input is CSV File"))
+grid.Add(self.in_is_csv_lbl NULL pos=(9 NULL 0))
+self.make_bold(self.in_is_csv_lbl)
+NULL
+#Create Checkbox
+self.out_is_csv = wx.CheckBox(self NULL style=wx.CHK_2STATE NULL \
+name = "Output File CSV")
+grid.Add(self.out_is_csv NULL pos = (10 NULL 1))
+self.Bind(wx.EVT_CHECKBOX NULL self.OnCheckOut NULL self.out_is_csv)
+self.out_is_csv_lbl = wx.StaticText(self NULL label =\
+(" " +\
+" Output is CSV File"))
+grid.Add(self.out_is_csv_lbl NULL pos=(10 NULL 0))
+self.make_bold(self.out_is_csv_lbl)
+NULL
+if self.smart_check:
+self.out_is_csv.Enable(False)
+NULL
+#Smart Checkbox
+create_smartcheck = filemenu.Append(wx.ID_ANY NULL "Smart&Check" NULL "SmartCheck" NULL wx.ITEM_CHECK)
+self.Bind(wx.EVT_MENU NULL self.OnSmartCheck NULL create_smartcheck)
+NULL
+#Convert Button
+self.convert_button = wx.Button(self NULL label="Convert")
+self.Bind(wx.EVT_BUTTON NULL self.OnClick NULL self.convert_button)
+self.make_bold(self.convert_button)
+NULL
+#Clear Button
+self.clear_button = wx.Button(self NULL label = "Clear")
+self.Bind(wx.EVT_BUTTON NULL self.Clear NULL self.clear_button)
+self.make_bold(self.clear_button)
+NULL
+#Setup sizers and place them
+hSizer.AddSpacer(10)
+hSizer.Add(grid NULL 0 NULL wx.EXPAND NULL 10)
+hSizer.AddSpacer(10)
+hSizer.Add(self.logger NULL 1 NULL wx.EXPAND)
+mainSizer.AddSpacer(10)
+mainSizer.Add(hSizer NULL 1 wx.EXPAND)
+mainSizer.AddSpacer(10)
+mainSizer.Add(self.convert_button NULL 0 NULL wx.EXPAND | wx.CENTER)
+mainSizer.AddSpacer(5)
+buttonSizer = wx.BoxSizer(wx.HORIZONTAL)
+buttonSizer.Add(self.clear_button NULL 1 NULL wx.LEFT)
+mainSizer.Add(buttonSizer NULL 0)
+self.SetSizerAndFit(mainSizer)
+self.Centre()
+NULL
+NULL
+def OnAbout(self NULL e):
+'''Displays a pupup box that gives information about this software'''
+dlg = wx.MessageDialog(self NULL "Convert Text File Software " + \
+"\n\nThis Graphical-" +\
+"User-Interface for converting between " +\
+"Space separated and comma separated text files"\
++ " was created by" +\
+" Cameron Buttazzoni for research " + \
+"purposes at the Fires Management " +\
+"System Laboratory in the Faculty of Forestry"+\
+" at the University of Toronto\n\n" +\
+"THIS SOFTWARE IS NOT VALIDATED OR CERTIFIED" +\
+" FOR OPERATIONAL USE"\
++ "\nCopyright: Cameron Buttazzoni\n\n" NULL \
+"About Convert Text Files Software" NULL wx.OK)
+dlg.ShowModal()
+dlg.Destroy()
+NULL
+def OnExit(self NULL e):
+'''Exit the software'''
+self.Close(True)
+raise SystemExit
+NULL
+def OnSave(self NULL e): #Same functionality as browse output file
+'''Select an output file'''
+dlg = wx.FileDialog(self NULL "Choose a file" NULL self.dirname NULL \
+"" NULL "*.*" NULL wx.OPEN)
+if dlg.ShowModal() == wx.ID_OK:
+self.filename = dlg.GetFilename()
+self.dirname = dlg.GetDirectory()
+self.input[1] = os.path.join(self.dirname NULL self.filename)
+self.output_box.SetValue(os.path.join(self.dirname NULL self.filename))
+dlg.Destroy()
+NULL
+def OnOpen(self NULL e): #same functionality as browse input file
+'''Open an input file'''
+dlg = wx.FileDialog(self NULL "Choose a file" NULL self.dirname NULL \
+"" NULL "*.*" NULL wx.OPEN)
+if dlg.ShowModal() == wx.ID_OK:
+self.filename = dlg.GetFilename()
+self.dirname = dlg.GetDirectory()
+self.input[0] = os.path.join(self.dirname NULL self.filename)
+self.input_box.SetValue(os.path.join(self.dirname NULL self.filename))
+dlg.Destroy()
+NULL
+def OnHelp(self NULL e):
+'''Opens a box displaying this on help'''
+help_text = '''Input file should be a space seperated or csv file\n
+For input format NULL leave it blank to copy all of the values from the input file\n
+Instead NULL you can enter comma or space seperated numbers to choose from specific
+input columns that you want to include.\nFor output format NULL the format is
+the same NULL but this chooses the order the inputs will be placed in the output
+file.\n Leave this field blank to copy all inputs.\n Numbers not entered will
+be replaced by NULL for space seperated output files NULL and an empty string
+for CVS output files.\n WARNING: Reordering the output DOES NOT reorder the
+header if you select to copy it.\nSmartCheck Automatically converts to a
+space seperated file if the input is CSV NULL and vice versa.\n
+Number of lines copies up to that many lines (not counting the header if copied
+\nTo use filter NULL enter the values as column number (starting from 1)::string\n
+* can be included so to filter such that everything else must be in any string.
+-- can be included at the start of a string to copy all but those ones.\n
+Separate additional filters with a comma without a space: ex:\n
+4::196* 3::--Type1'''
+help_dlg = wx.MessageDialog(self NULL help_text NULL "File Conversion" +\
+" Software Help" NULL wx.OK)
+help_dlg.ShowModal()
+help_dlg.Destroy()
+NULL
+def EvtText(self NULL e NULL num):
+'''Entering text sets input to new entered value'''
+try:
+value = e.GetString().encode('ascii' NULL 'ignore')
+except AttributeError:
+pass
+if num == 2: #input format
+if value == '':
+self.input[num] = ''
+elif len(value.split(' ')) != 1:
+temp_list = value.split(' ')
+for x in range(len(temp_list)):
+try:
+if temp_list[x] != '' and temp_list[x] != ' ':
+temp_list[x] = int(temp_list[x])
+except ValueError:
+self.logger.AppendText("\nInvalid Format\n")
+self.input[num] = temp_list
+else:
+temp_list = value.split()
+for x in range(len(temp_list)):
+try:
+if temp_list[x] != '' and temp_list[x] != ' ':
+temp_list[x] = int(temp_list[x])
+except ValueError:
+self.logger.AppendText("\nInvalid Format\n")
+self.input[num] = temp_list
+elif num == 3: #output format
+if value == '':
+self.input[num] = ''
+elif len(value.split(' ')) != 1:
+temp_list = value.split(' ')
+for x in range(len(temp_list)):
+try:
+if temp_list[x] != '' and temp_list[x] != ' ':
+temp_list[x] = int(temp_list[x])
+except ValueError:
+self.logger.AppendText("\nInvalid Format\n")
+self.input[num] = temp_list
+else:
+temp_list = value.split()
+for x in range(len(temp_list)):
+try:
+if temp_list[x] != '' and temp_list[x] != ' ':
+temp_list[x] = int(temp_list[x])
+except ValueError:
+self.logger.AppendText("\nInvalid Format\n")
+self.input[num] = temp_list
+elif num == 5:
+temp_list = value.split(' ')
+for x in range(len(temp_list)):
+try:
+temp_list[x] = temp_list[x].split('::')
+temp_list[x][0] = int(temp_list[x][0])
+if type(temp_list[x][1]) != str:
+raise ValueError
+except (ValueError NULL IndexError NULL TypeError):
+pass
+self.input[5] = temp_list
+else:
+self.input[num] = value
+NULL
+def Clear(self NULL e): #clears logger and all entered values
+self.logger.Clear()
+self.input_box.Clear()
+self.output_box.Clear()
+self.out_format.Clear()
+self.in_format.Clear()
+for x in range(len(self.input)):
+self.input[x] = ''
+NULL
+def OnClick(self NULL e):
+'''Convert'''
+self.disable_buttons()
+if self.input[2] == '':
+copy_all_thread = threading.Thread(target = self.copy_all)
+copy_all_thread.setDaemon(True)
+copy_all_thread.start()
+else:
+copy_select_thread = threading.Thread(target = self.copy_select)
+copy_select_thread.setDaemon(True)
+copy_select_thread.start()
+NULL
+NULL
+def copy_all(self):
+#Copy Everything Over
+try:
+in_file = open(self.input[0] NULL 'r')
+except IOError:
+self.logger.AppendText("\nInvalid Input File\n\n")
+self.enable_buttons()
+return
+try:
+out_file = open(self.input[1] NULL 'w')
+except IOError:
+self.logger.AppendText("\nInvalid Output File\n\n")
+self.enable_buttons()
+return
+temp = ''
+if self.is_header:
+temp = in_file.readline()
+temp = in_file.readline()
+if self.is_csv:
+find_length_in = len(temp.split(' '))
+else:
+find_length_in = len(temp.split())
+try:
+if max(self.input[2]) > find_length_in:
+in_file.close()
+out_file.close()
+self.logger.AppendText("\nInput Format Value Too Large\n\n")
+self.enable_buttons()
+return
+except ValueError:
+pass
+in_file.seek(0)
+self.logger.AppendText("\nConverting...\n\n")
+if self.is_header:
+temp = in_file.readline()
+if temp[-1] == '\n':
+temp = temp[:-1]
+if self.copy_header:
+if self.is_csv:
+temp2 = temp.split(' ')
+for x in range(len(temp2)):
+if not self.want_csv:
+if temp2[x] != '':
+if x != len(temp2) - 1:
+out_file.write(temp2[x] + " ")
+else:
+out_file.write(temp2[x])
+else:
+if x != len(temp2) - 1:
+out_file.write("NULL ")
+else:
+out_file.write("NULL")
+else:
+if x != len(temp2) - 1:
+out_file.write(temp2[x] + " ")
+else:
+out_file.write(temp2[x])
+out_file.write('\n')
+else:
+temp2 = temp.split()
+for x in range(len(temp2)):
+if self.want_csv:
+if x != len(temp2) - 1:
+out_file.write(temp2[x] + " ")
+else:
+out_file.write(temp2[x])
+else:
+if temp2[x] != '':
+if x != len(temp2) - 1:
+out_file.write(temp2[x] + " ")
+else:
+out_file.write(temp2[x])
+else:
+if x != len(temp2) - 1:
+out_file.write("NULL ")
+else:
+out_file.write("NULL")
+out_file.write('\n')
+temp = in_file.readline()
+if self.input[3] == '':
+count = 1
+while temp != '':
+if temp[-1] == '\n':
+temp = temp[:-1]
+if self.is_csv:
+temp2 = temp.split(' ')
+check = self.filter_line(temp2)
+if check == -1:
+self.logger.AppendText("Invalid Filter Inputted")
+self.enable_buttons()
+return
+elif check == 0:
+temp = in_file.readline()
+continue
+for x in range(len(temp2)):
+if not self.want_csv:
+if temp2[x] != '':
+if x != len(temp2) - 1:
+out_file.write(temp2[x] + " ")
+else:
+out_file.write(temp2[x])
+else:
+if x != len(temp2) - 1:
+out_file.write("NULL ")
+else:
+out_file.write("NULL")
+else:
+if x != len(temp2) - 1:
+out_file.write(temp2[x] + ' ')
+else:
+out_file.write(temp2[x])
+out_file.write('\n')
+else:
+temp2 = temp.split()
+check = self.filter_line(temp2)
+if check == -1:
+self.logger.AppendText("Invalid Filter Inputted")
+self.enable_buttons()
+return
+elif check == 0:
+temp = in_file.readline()
+continue
+for x in range(len(temp2)):
+if self.want_csv:
+if x != len(temp2) - 1:
+out_file.write(temp2[x] + " ")
+else:
+out_file.write(temp2[x])
+else:
+if temp2[x] != '':
+if x != len(temp2) - 1:
+out_file.write(temp2[x] + " ")
+else:
+out_file.write(temp2[x])
+else:
+if x != len(temp2) - 1:
+out_file.write("NULL ")
+else:
+out_file.write("NULL")
+out_file.write('\n')
+temp = in_file.readline()
+try:
+if self.input[4] != '' and count >= int(self.input[4]):
+break
+count += 1
+except ValueError:
+self.logger.AppendText("\nInvalid number of runs\n\n")
+return
+in_file.close()
+out_file.close()
+self.enable_buttons()
+self.logger.AppendText("\nFinished Conversion\n\n")
+return
+while temp != '':
+for x in range(len(self.input[3])):
+if type(self.input[3][x]) != int:
+self.logger.AppendText("\nInvalid Output Format\n\n")
+self.enable_buttons()
+return
+if temp[-1] == '\n':
+temp = temp[:-1]
+if self.is_csv:
+temp2 = temp.split(' ')
+check = self.filter_line(temp2)
+if check == -1:
+self.logger.AppendText("Invalid Filter Inputted")
+self.enable_buttons()
+return
+elif check == 0:
+temp = in_file.readline()
+continue
+new_line = ["NULL"] * max(self.input[3])
+for x in range(len(temp2)):
+try:
+new_line[self.input[3][x] - 1] = temp2[x] #first spot is 1
+except IndexError:
+pass
+for x in range(len(new_line)):
+if not self.want_csv:
+if new_line[x] != '':
+if x != len(new_line) - 1:
+out_file.write(new_line[x] + " ")
+else:
+out_file.write(new_line[x])
+else:
+if x != len(new_line) - 1:
+out_file.write("NULL ")
+else:
+out_file.write("NULL")
+else:
+if x != len(new_line) - 1:
+out_file.write(new_line[x] + " ")
+else:
+out_file.write(new_line[x])
+out_file.write('\n')
+else:
+temp2 = temp.split()
+check = self.filter_line(temp2)
+if check == -1:
+self.logger.AppendText("Invalid Filter Inputted")
+self.enable_buttons()
+return
+elif check == 0:
+temp = in_file.readline()
+continue
+new_line = [""] * max(self.input[3])
+for x in range(len(temp2)):
+try:
+new_line[self.input[3][x] - 1] = temp2[x] #first spot is 1
+except IndexError:
+pass
+for x in range(len(new_line)):
+if self.want_csv:
+if x != len(new_line) - 1:
+out_file.write(new_line[x] + " ")
+else:
+out_file.write(new_line[x])
+else:
+if new_line[x] != '':
+if x != len(new_line) - 1:
+out_file.write(new_line[x] + " ")
+else:
+out_file.write(new_line[x])
+else:
+if x != len(new_line) - 1:
+out_file.write("NULL ")
+else:
+out_file.write("NULL")
+out_file.write('\n')
+temp = in_file.readline()
+try:
+if self.input[4] != '' and count >= int(self.input[4]):
+break
+count += 1
+except ValueError:
+self.logger.AppendText("\nInvalid number of runs\n\n")
+return
+in_file.close()
+out_file.close()
+self.enable_buttons()
+self.logger.AppendText("\nFinished Conversion\n\n")
+return
+NULL
+NULL
+def copy_select(self):
+for x in range(len(self.input[2])):
+if type(self.input[2][x]) != int:
+self.logger.AppendText("\nInvalid Input Format\n\n")
+self.enable_buttons()
+return
+try:
+in_file = open(self.input[0] NULL 'r')
+except IOError:
+self.logger.AppendText("\nInvalid Input File\n\n")
+self.enable_buttons()
+return
+try:
+out_file = open(self.input[1] NULL 'w')
+except IOError:
+self.logger.AppendText("\nInvalid Output File\n\n")
+self.enable_buttons()
+return
+temp = ''
+if self.is_header:
+temp = in_file.readline()
+temp = in_file.readline()
+if self.is_csv:
+find_length_in = len(temp.split(' '))
+else:
+find_length_in = len(temp.split())
+try:
+if max(self.input[2]) > find_length_in:
+in_file.close()
+out_file.close()
+self.logger.AppendText("\nInput Format Value Too Large\n\n")
+self.enable_buttons()
+return
+except ValueError:
+pass
+in_file.seek(0)
+self.logger.AppendText("\nConverting...\n\n")
+if self.is_header:
+temp = in_file.readline()
+if temp[-1] == '\n':
+temp = temp[:-1]
+if self.copy_header:
+if self.is_csv:
+temp2 = temp.split(' ')
+for x in range(len(temp2)):
+if not self.want_csv:
+if temp2[x] != '':
+if x != len(temp2) - 1:
+out_file.write(temp2[x] + " ")
+else:
+out_file.write(temp2[x])
+else:
+if x != len(temp2) - 1:
+out_file.write("NULL ")
+else:
+out_file.write("NULL")
+else:
+if x != len(temp2) - 1:
+out_file.write(temp2[x] + " ")
+else:
+out_file.write(temp2[x])
+out_file.write('\n')
+else:
+temp2 = temp.split()
+for x in range(len(temp2)):
+if self.want_csv:
+if x != len(temp2) - 1:
+out_file.write(temp2[x] + " ")
+else:
+out_file.write(temp2[x])
+else:
+if temp2[x] != '':
+if x != len(temp2) - 1:
+out_file.write(temp2[x] + " ")
+else:
+out_file.write(temp2[x])
+else:
+if x != len(temp2) - 1:
+out_file.write("NULL ")
+else:
+out_file.write("NULL")
+out_file.write('\n')
+temp = in_file.readline()
+#Copy selected ones over
+if self.input[3] == '':
+while temp != '':
+if temp[-1] == '\n':
+temp = temp[:-1]
+if self.is_csv:
+temp2 = temp.split(' ')
+check = self.filter_line(temp2)
+if check == -1:
+self.logger.AppendText("Invalid Filter Inputted")
+self.enable_buttons()
+return
+elif check == 0:
+temp = in_file.readline()
+continue
+for x in range(len(self.input[2])):
+if not self.want_csv:
+if temp2[self.input[2][x] - 1] != '':
+if x != len(self.input[2]) - 1:
+out_file.write(temp2[self.input[2][x] - 1] + " ")
+else:
+out_file.write(temp2[self.input[2][x] - 1])
+else:
+if x != len(self.input[2]) - 1:
+out_file.write("NULL ")
+else:
+out_file.write("NULL")
+else:
+if x != len(self.input[2]) - 1:
+out_file.write(temp2[self.input[2][x] - 1] + " ")
+else:
+out_file.write(temp2[self.input[2][x] - 1])
+out_file.write('\n')
+else:
+temp2 = temp.split()
+check = self.filter_line(temp2)
+if check == -1:
+self.logger.AppendText("Invalid Filter Inputted")
+self.enable_buttons()
+return
+elif check == 0:
+temp = in_file.readline()
+continue
+for x in range(len(self.input[2])):
+if self.want_csv:
+if x != len(self.input[2]) - 1:
+out_file.write(temp2[self.input[2][x] - 1] + " ")
+else:
+out_file.write(temp2[self.input[2][x] - 1])
+else:
+if temp2[self.input[2][x] - 1] != '':
+if x != len(self.input[2]) - 1:
+out_file.write(temp2[self.input[2][x] - 1] + " ")
+else:
+out_file.write(temp2[self.input[2][x] - 1])
+else:
+if x != len(self.input[2]) - 1:
+out_file.write("NULL ")
+else:
+out_file.write("NULL")
+out_file.write('\n')
+temp = in_file.readline()
+try:
+if self.input[4] != '' and count >= int(self.input[4]):
+break
+count += 1
+except ValueError:
+self.logger.AppendText("\nInvalid number of runs\n\n")
+return
+in_file.close()
+out_file.close()
+self.enable_buttons()
+self.logger.AppendText("\nFinished Conversion\n\n")
+return
+NULL
+while temp != '':
+for x in range(len(self.input[3])):
+if type(self.input[3][x]) != int:
+self.logger.AppendText("\nInvalid Output Format\n\n")
+self.enable_buttons()
+return
+if temp[-1] == '\n':
+temp = temp[:-1]
+if self.is_csv:
+temp2 = temp.split(' ')
+check = self.filter_line(temp2)
+if check == -1:
+self.logger.AppendText("Invalid Filter Inputted")
+self.enable_buttons()
+return
+elif check == 0:
+temp = in_file.readline()
+continue
+new_line = ["NULL"] * max(self.input[3])
+for x in range(len(temp2)):
+try:
+new_line[self.input[3][x] - 1] = \
+temp2[self.input[2][x] - 1]
+#first spot is 1
+except IndexError:
+try:
+new_line.append(temp2[self.input[2][x] - 1])
+except IndexError:
+pass
+for x in range(len(new_line)):
+if not self.want_csv:
+if new_line[x] != '':
+if x != len(new_line) - 1:
+out_file.write(new_line[x] + " ")
+else:
+out_file.write(new_line[x])
+else:
+if x != len(new_line) - 1:
+out_file.write("NULL ")
+else:
+out_file.write("NULL")
+else:
+if x != len(new_line) - 1:
+out_file.write(new_line[x] + " ")
+else:
+out_file.write(new_line[x])
+out_file.write('\n')
+else:
+temp2 = temp.split()
+check = self.filter_line(temp2)
+if check == -1:
+self.logger.AppendText("Invalid Filter Inputted")
+self.enable_buttons()
+return
+elif check == 0:
+temp = in_file.readline()
+continue
+new_line = [""] * max(self.input[3])
+for x in range(len(temp2)):
+try:
+new_line[self.input[3][x] - 1] = \
+temp2[self.input[2][x] - 1]
+#first spot is 1
+except IndexError:
+try:
+new_line.append(temp2[self.input[2][x] - 1])
+except IndexError:
+pass
+for x in range(len(new_line)):
+if self.want_csv:
+if x != len(new_line) - 1:
+out_file.write(new_line[x] + " ")
+else:
+out_file.write(new_line[x])
+else:
+if new_line[x] != '':
+if x != len(new_line) - 1:
+out_file.write(new_line[x] + " ")
+else:
+out_file.write(new_line[x])
+else:
+if x != len(new_line) - 1:
+out_file.write("NULL ")
+else:
+out_file.write("NULL")
+out_file.write('\n')
+temp = in_file.readline()
+try:
+if self.input[4] != '' and count >= int(self.input[4]):
+break
+count += 1
+except ValueError:
+self.logger.AppendText("\nInvalid number of runs\n\n")
+return
+in_file.close()
+out_file.close()
+self.enable_buttons()
+self.logger.AppendText("\nFinished Conversion\n\n")
+return
+NULL
+def filter_line(self NULL line):
+if self.input[5] == '':
+return 1
+for x in range(len(self.input[5])):
+temp = copy.deepcopy(self.input[5])
+try:
+if '*' in temp[x][1] and '--' in temp[x][1]:
+temp[x][1] = temp[x][1].translate(None NULL "*")
+temp[x][1] = temp[x][1].translate(None NULL "--")
+if temp[x][1] in line[self.input[5][x][0]-1]:
+return 0
+elif '*' in temp[x][1]:
+temp[x][1] = temp[x][1].translate(None NULL "*")
+if temp[x][1] not in line[self.input[5][x][0]-1]:
+return 0
+elif '%' in temp[x][1] and '--' in temp[x][1]:
+temp[x][1] = temp[x][1].translate(None NULL "--")
+if len(temp[x][1]) == len(line[self.input[5][x][0]-1]):
+flag = True
+for y in range(len(temp[x][1])):
+if temp[x][1][y] != line[self.input[5][x][0]-1][y]\
+and temp[x][1][y] != '%':
+flag = False
+break
+if flag:
+return 0
+elif '%' in temp[x][1]:
+if len(temp[x][1]) != len(line[self.input[5][x][0]-1]):
+return 0
+for y in range(len(temp[x][1])):
+if temp[x][1][y] != line[self.input[5][x][0]-1][y]\
+and temp[x][1][y] != '%':
+return 0
+elif '--' == temp[x][1][:2]:
+temp[x][1] = temp[x][1].translate(None NULL "--")
+if line[self.input[5][x][0] - 1] == temp[x][1]:
+return 0
+else:
+if line[self.input[5][x][0] - 1] != temp[x][1]:
+return 0
+except IndexError:
+return -1
+return 1
+def make_bold(self NULL text):
+'''Makes prompts and button text bold'''
+temp_font = text.GetFont()
+temp_font.SetWeight(wx.BOLD)
+text.SetFont(temp_font)
+NULL
+def disable_buttons(self):
+'''Prevent User from clicking any buttons'''
+self.convert_button.Enable(False)
+self.clear_button.Enable(False)
+self.browse_button_out.Enable(False)
+self.browse_button_input.Enable(False)
+NULL
+def enable_buttons(self):
+'''Reenable buttons to be pressed'''
+self.convert_button.Enable(True)
+self.clear_button.Enable(True)
+self.browse_button_out.Enable(True)
+self.browse_button_input.Enable(True)
+NULL
+def OnCheckHead(self NULL e):
+if self.is_header == False:
+self.is_header = True
+else:
+self.is_header = False
+if self.header_copy.IsEnabled():
+self.header_copy.Enable(False)
+else:
+self.header_copy.Enable(True)
+NULL
+def OnCheckCopy(self NULL e):
+if self.copy_header:
+self.copy_header = False
+else:
+self.copy_header = True
+NULL
+def OnCheckCSV(self NULL e):
+if self.is_csv:
+self.is_csv = False
+if self.smart_check:
+self.want_csv = True
+else:
+self.is_csv = True
+if self.smart_check:
+self.want_csv = False
+NULL
+def OnCheckOut(self NULL e):
+if self.want_csv:
+self.want_csv = False
+else:
+self.want_csv = True
+NULL
+def OnSmartCheck(self NULL e):
+if self.smart_check:
+self.smart_check = False
+self.out_is_csv.Enable(True)
+else:
+self.smart_check = True
+self.out_is_csv.Enable(False)
+NULL
+#run the GUI
+app = wx.App(False)
+frame = mainwindow(None NULL "Fire Interpolation System")
+frame.Show()
+app.MainLoop()
